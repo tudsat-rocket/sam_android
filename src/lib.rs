@@ -1,6 +1,6 @@
 use std::sync::mpsc::{Sender, Receiver};
 
-use log::info;
+use log::*;
 
 use egui_wgpu::wgpu;
 use egui_winit::winit;
@@ -93,7 +93,10 @@ fn _main(event_loop: EventLoop<Event>) {
         sam::data_source::serial::SERIAL_STATUS_RECEIVER = Some(receiver);
     }
 
-    let ctx = egui::Context::default();
+    let mut ctx = egui::Context::default();
+    ctx.tessellation_options_mut(|options| {
+        options.feathering = false;
+    });
     let repaint_signal = RepaintSignal(std::sync::Arc::new(std::sync::Mutex::new(
         event_loop.create_proxy(),
     )));
@@ -115,7 +118,12 @@ fn _main(event_loop: EventLoop<Event>) {
             device_descriptor: std::sync::Arc::new(|_adapter| wgpu::DeviceDescriptor {
                 label: None,
                 features: wgpu::Features::default(),
-                limits: wgpu::Limits::default(),
+                limits: wgpu::Limits {
+                    max_compute_workgroup_size_x: 128,
+                    max_compute_workgroup_size_y: 128,
+                    max_compute_invocations_per_workgroup: 128,
+                    ..wgpu::Limits::default()
+                },
             }),
             present_mode: wgpu::PresentMode::Fifo,
             ..Default::default()
@@ -140,9 +148,7 @@ fn _main(event_loop: EventLoop<Event>) {
             }
             Some(ref window) => {
                 pollster::block_on(painter.set_window(Some(window))).unwrap_or_else(|err| {
-                    log::error!(
-                        "Failed to associate window with painter after resume event: {err:?}"
-                    )
+                    error!("Failed to associate window with painter after resume event: {err:?}")
                 });
                 window.request_redraw();
             }
@@ -152,17 +158,17 @@ fn _main(event_loop: EventLoop<Event>) {
         }
         RedrawRequested(..) => {
             if let Some(window) = window.as_ref() {
-                log::debug!("RedrawRequested, with window set");
+                debug!("RedrawRequested, with window set");
                 let raw_input = state.take_egui_input(window);
 
-                log::debug!("RedrawRequested: calling ctx.run()");
+                debug!("RedrawRequested: calling ctx.run()");
                 let full_output = ctx.run(raw_input, |ctx| {
                     sam.ui(ctx);
                 });
-                log::debug!("RedrawRequested: called ctx.run()");
+                debug!("RedrawRequested: called ctx.run()");
                 state.handle_platform_output(window, &ctx, full_output.platform_output);
 
-                log::debug!("RedrawRequested: calling paint_and_update_textures()");
+                debug!("RedrawRequested: calling paint_and_update_textures()");
                 painter.paint_and_update_textures(
                     state.pixels_per_point(),
                     [0.0, 0.0, 0.0, 0.0],
@@ -175,12 +181,12 @@ fn _main(event_loop: EventLoop<Event>) {
                     window.request_redraw();
                 }
             } else {
-                log::debug!("RedrawRequested, with no window set");
+                debug!("RedrawRequested, with no window set");
             }
         }
         MainEventsCleared | UserEvent(Event::RequestRedraw) => {
             if let Some(window) = window.as_ref() {
-                log::debug!("Winit event (main events cleared or user event) - request_redraw()");
+                debug!("Winit event (main events cleared or user event) - request_redraw()");
                 window.request_redraw();
             }
         }
